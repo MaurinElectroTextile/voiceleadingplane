@@ -1,8 +1,67 @@
 (
-s.waitForBoot({
+var numrowscols=25;
+var radius=13;
 
-    var center_to_row_col = ();
-    var radius=13;
+// define a function to convert a midi note number to a midi note name
+var topleftnote, toprightnote, bottomleftnote, bottomrightnote;
+var miditoname = ({ arg note = 60, style = \American ;
+	var offset = 0 ;
+	var midi, notes;
+	case { style == \French } { offset = -1}
+	{ style == \German } { offset = -3} ;
+	midi = (note + 0.5).asInteger;
+	notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+	(notes[midi%12] ++ (midi.div(12)-1+offset))
+});
+
+// define a function to convert a midi note name to a midi note number
+var nametomidi = ({ arg name = "C4", style = \American ;
+	var offset = 0 ; // French usage: +1 ; German usage: +3
+	var twelves, ones, octaveIndex, midis;
+
+	case { style == \French } { offset = 1}
+	{ style == \German } { offset = 3} ;
+
+	midis = Dictionary[($c->0),($d->2),($e->4),($f->5),($g->7),($a->9),($b->11)];
+	ones = midis.at(name[0].toLower);
+
+	if( (name[1].isDecDigit), {
+		octaveIndex = 1;
+	},{
+		octaveIndex = 2;
+		if( (name[1] == $#) || (name[1].toLower == $s) || (name[1] == $+), {
+			ones = ones + 1;
+		},{
+			if( (name[1] == $b) || (name[1].toLower == $f) || (name[1] == $-), {
+				ones = ones - 1;
+			});
+		});
+	});
+	twelves = (name.copyRange(octaveIndex, name.size).asInteger) * 12;
+
+	(twelves + 12 + ones + (offset*12))
+});
+
+
+
+s.waitForBoot({
+	var colorlut = [
+		Color.new255(255,0,0),
+		Color.new255(255,127,0),
+		Color.new255(255,255,0),
+		Color.new255(0,255,0),
+		Color.new255(0,0,255),
+		Color.new255(75,0,130),
+		Color.new255(143,0,255),
+		Color.new255(75,0,130),
+		Color.new255(0,0,255),
+		Color.new255(0,255,0),
+		Color.new255(255,255,0),
+		Color.new255(255,127,0),
+		Color.new255(255,0,0)
+	];
+	var center_to_row_col = ();
 
 	// FM Trumpet
 
@@ -125,81 +184,101 @@ s.waitForBoot({
 		}).load(s);
 	);
 
-	~i1 = Synth(\fmtrumpet, [\amp, -20, \dur, 1000, \fundfreq, 12.linlin(0,24,36,60).midicps]);
-	~i2 = Synth(\fmtrumpet, [\amp, -20, \dur, 1000, \fundfreq, 12.linlin(0,24,48,72).midicps]);
+	s.sync;
 
-    (
-        w = Window.new(bounds:Rect(200,200,1000,1000));
-	  	w.view.background_(Color.white);
-        v = UserView(w, w.view.bounds.insetBy(5,5));
-        w.acceptsMouseOver_(true);
-        v.drawFunc = { |v|
-            var colorlut = [
-                Color.new255(255,0,0),
-                Color.new255(255,127,0),
-                Color.new255(255,255,0),
-                Color.new255(0,255,0),
-                Color.new255(0,0,255),
-                Color.new255(75,0,130),
-                Color.new255(143,0,255),
-                Color.new255(75,0,130),
-                Color.new255(0,0,255),
-                Color.new255(0,255,0),
-                Color.new255(255,255,0),
-                Color.new255(255,127,0),
-                Color.new255(255,0,0)
-            ];
+	~i1 = Synth(\fmtrumpet, [\amp, -20, \dur, 1000, \fundfreq, 0]);
+	~i2 = Synth(\fmtrumpet, [\amp, -20, \dur, 1000, \fundfreq, 0]);
 
-            Pen.use {
-                Pen.translate(0,v.bounds.height/2);
-                Pen.rotate(-pi/4);
-                25.do({ | row |
-                    25.do({
-                        | col |
+	(
+		w = Window.new(bounds:Rect(200,200,1000,1000));
+		w.view.background_(Color.white);
+		v = UserView(w, w.view.bounds.insetBy(5,5));
+		w.acceptsMouseOver_(true);
+		topleftnote = TextField();
+		bottomleftnote = TextField();
+		toprightnote= TextField();
+		bottomrightnote = TextField();
+		v.layout = VLayout(
+			HLayout(
+				GridLayout.rows(
+					[[topleftnote.string_("C5").align_(\center), columns:2],
+						[toprightnote.string_("C5").align_(\center), columns:2], nil],
+					[[bottomleftnote.string_("C3").align_(\center), columns:2],
+						[bottomrightnote.string_("C3").align_(\center), columns:2],nil],
+			), nil),
+			nil
+		);
 
-                        var x = col.linlin(-1,25*sqrt(2),0,v.bounds.width);
-                        var y = row.linlin(-1,25*sqrt(2),0,v.bounds.width);
-                        var color = colorlut[(row-col)%12];
-                        var m11,m12,m21,m22,trx,try;
-                        Pen.fillColor = color;
-                        Pen.strokeColor = Color.black;
-                        a = Pen.addArc(x@y, radius, 0, 2pi);
-                        m = a.matrix;
-                        m11 = m[0];
-                        m21 = m[1];
+		v.drawFunc = { |v|
+			Pen.use {
+				Pen.translate(0,v.bounds.height/2);
+				Pen.rotate(-pi/4);
+				numrowscols.do({ | row |
+					numrowscols.do({
+						| col |
+
+						var x = col.linlin(-1,numrowscols*sqrt(2),0,v.bounds.width);
+						var y = row.linlin(-1,numrowscols*sqrt(2),0,v.bounds.width);
+						var color = colorlut[(row-col)%12];
+						var m11,m12,m21,m22,trx,try;
+						Pen.fillColor = color;
+						Pen.strokeColor = Color.black;
+						a = Pen.addArc(x@y, radius, 0, 2pi);
+						m = a.matrix;
+						m11 = m[0];
+						m21 = m[1];
 						m12 = m[2];
-                        m22 = m[3];
-                        trx = m[4];
-                        try = m[5];
-                        Pen.fillStroke;
+						m22 = m[3];
+						trx = m[4];
+						try = m[5];
+						Pen.fillStroke;
 
 						// map from user coordinates x,y to screen coordinates using system matrix
-                        center_to_row_col.put( row*25 + col, [(((m11*x)+(m12*y)+trx)), (((m21*x)+(m22*y)+try))]);
+						center_to_row_col.put( row*numrowscols + col, [(((m11*x)+(m12*y)+trx)), (((m21*x)+(m22*y)+try))]);
 
-                    });
-                });
-            };
-        };
-        v.mouseDownAction = {
-            | view, x, y, modifiers, buttonNumber, clickCount |
-            center_to_row_col.keysValuesDo({
-                | key, value |
-                var distancesquared = (((value[0]-x)*(value[0]-x)) + ((value[1]-y)*(value[1]-y)));
-                var radiussquared = radius*radius;
-                if (distancesquared < radiussquared)
-                {
-                    var row = key.div(25);
-                    var col = key%25;
-					var rownote = row.linlin(0,24,36,60);
-					var colnote = col.linlin(0,24,48,72);
+					});
+				});
+			};
+		};
+		v.mouseDownAction = {
+			| view, x, y, modifiers, buttonNumber, clickCount |
+			var found = False;
+			center_to_row_col.keysValuesDo({
+				| key, value |
+				var distancesquared = (((value[0]-x)*(value[0]-x)) + ((value[1]-y)*(value[1]-y)));
+				var radiussquared = radius*radius;
+				if ((distancesquared < radiussquared) && (found == False))
+				{
+					var row = key.div(numrowscols);
+					var col = key%numrowscols;
+					var rownote = row.linlin(0,
+						24,
+						nametomidi.value(bottomleftnote.string),
+						nametomidi.value(toprightnote.string));
+					var colnote = col.linlin(0,
+						24,
+						nametomidi.value(bottomrightnote.string),
+						nametomidi.value(topleftnote.string));
+					found = True;
 					("row: "++row++"col: "++col).postln;
 					~i1.set(\fundfreq, rownote.midicps);
 					~i2.set(\fundfreq, colnote.midicps);
-                };
-            });
-        };
-	 	w.front;
-    );
+				};
+			});
+			if (found == False)
+			{
+				~i1.set(\fundfreq, 0);
+				~i2.set(\fundfreq, 0);
+			};
+		};
+
+		v.onClose = {
+			~i1.free;
+			~i2.free;
+		};
+
+		w.front;
+	);
 
 });
 
