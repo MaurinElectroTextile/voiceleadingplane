@@ -1,11 +1,10 @@
 (
 var numrowscols=25;
 var radius=13;
-var enableAnimation=true;
 var hor_instrument = nil;
 var ver_instrument = nil;
-var nametosymbol = Dictionary.newFrom(["FMTrumpet", \fmtrumpet, "FMViolin", \fmviolin]);
-var nametoamplitude = Dictionary.newFrom(["FMTrumpet", -20, "FMViolin", 10]);
+var nametosymbol = Dictionary.newFrom(["FMTrumpet", \fmtrumpet, "Pad", \pad]);
+var nametoamplitude = Dictionary.newFrom(["FMTrumpet", -20, "Pad", 0.2]);
 
 // define a function to convert a midi note number to a midi note name
 var lastclickedrow = nil;
@@ -76,7 +75,7 @@ s.waitForBoot({
 	// Based on Dodge p.129, an adaption of Dexter Morrill's design
 
 	(
-		SynthDef(\fmtrumpet, {arg dur = 1, amp = -3, fundfreq = 440, index = 1, halfsine = 1;
+		SynthDef(\fmtrumpet, {arg dur = 1, amp = -3, freq = 440, index = 1, halfsine = 1;
 			var env, amp1, amp2, formant, dev1, dev2, rand, vibamp, vibosc, porta, vib, ac1env,
 			ac2env, modenv, car1 ,car2, mod, mod2;
 			env = EnvGen.kr(Env([0.01, 1, 1, 0.01], [0.01, dur - 0.02, 0.01], \exp), doneAction: 2);
@@ -111,13 +110,13 @@ s.waitForBoot({
 			// help you understand this better if you insert your own values for
 			// fundamentals and formants and do the calculations to see the results!
 
-			formant = (1500 / fundfreq).round(1) * fundfreq;
+			formant = (1500 / freq).round(1) * freq;
 
 			// The variable "dev1" is the deviation, or amplitude of the the modulating
 			// oscillator. index is an index-like scalar set in the score to make the sound
 			// more or less bright.
 
-			dev1 = (fundfreq * 3) * index;
+			dev1 = (freq * 3) * index;
 
 			// The variable dev2 will be used to scale the output of the modulator
 			// before being used by the second carrier. Because we don't want to create
@@ -161,14 +160,14 @@ s.waitForBoot({
 
 			// The C:M ratio is 1:1, so fm = fc * vibrato
 
-			mod = SinOsc.ar(fundfreq * vib, 0, dev1 * modenv);
+			mod = SinOsc.ar(freq * vib, 0, dev1 * modenv);
 
 			// CARRIER1
 
 			// fc*vib gives the fundamental frequency and then
 			// we add the modulator signal
 
-			car1 = SinOsc.ar((fundfreq * vib) + mod, 0, ac1env * amp1);
+			car1 = SinOsc.ar((freq * vib) + mod, 0, ac1env * amp1);
 
 			// The modulation deviation is scaled back before
 			// applying it to the formant carrier, giving
@@ -188,121 +187,64 @@ s.waitForBoot({
 			car2 = SinOsc.ar((formant * vib) + mod2, 0, amp2 * ac2env);
 
 			Out.ar(0, (car1 + car2) * env!2);
-		}).load(s);
+		}).add;
 
-		SynthDef(\fmviolin, {
-			arg dur = 1, fundfreq = 440, amp = 0.25, fmindex = 50, fm1rat = 1, fm2rat = 3,
-			fm3rat = 4, noiseamt = 0.1, locate = 0.5, envtab = 0, fmtab = 1;
+SynthDef(\pad, { | freq, amp, dur, detune=#[1, 0.998, 0.999, 1.001, 1.002], cutofffreq=0.1, cutofflow=400, cutoffhigh=450|
+		var sig, env, totalsig;
+		var cutoffavg= (cutofflow+cutoffhigh)/2;
+		var cutoffdiff= cutoffhigh-cutofflow;
+		var attack = min(1,dur/2);
+		var release= min(1,dur/2)*2;
+		sig = LPF.ar(Saw.ar(freq*detune), ((SinOsc.kr(cutofffreq)*cutoffavg)+(cutoffavg+cutofflow)));
+		env = Env.linen(attack, dur-(attack+release), release);
+		totalsig = amp*EnvGen.kr(env, doneAction:2)*sig;
 
-			var env, modfreq1, modfreq2, modfreq3, index1, index2, index3, dev1, dev2, dev3, noisefreq,
-			noiseamp, envdur, chan1, chan2, vib, randvib, vibrate, noise, noiseenv, fmenv, pitchenv,
-			mod1, mod2, mod3, modall, car, sig, sig1, sig2;
-
-			modfreq1 = fundfreq * fm1rat;
-			modfreq2 = fundfreq * fm2rat;
-			modfreq3 = fundfreq * fm3rat;
-			index1 = (7.5 / fundfreq.log) * fmindex;
-			index2 = (15.0 / fundfreq.sqrt) * fmindex;
-			index3 = (1.25 / fundfreq.sqrt) * fmindex;
-			dev1 = index1 * fundfreq;
-			dev2 = index2 * fundfreq;
-			dev3 = index3 * fundfreq;
-			amp = amp * 0.25;
-			noisefreq = 1000;
-			noiseamp = noiseamt * amp;
-			chan1 = locate.sqrt;
-			chan2 = (1 - locate).sqrt;
-
-			// Vibrato Section
-
-			randvib = LFNoise1.kr(5, 0.0075);
-			vibrate = EnvGen.kr(
-				Env([1, 3.5, 4.5, 1], [0.5, dur - 1.0, 0.5], \exp),
-				doneAction: 0);
-			vib = SinOsc.ar(vibrate, 0, randvib);
-			vib = vib + 1;
-
-			// Noise
-			// In the book version of the FM-violin, the noise is
-			// added to the output signal to simulate bow noise at
-			// the beginning of a note. In this instrument the
-			// noise is part of the modulation signal creating a
-			// band of noise around the carrier frequency.
-
-			noiseenv = EnvGen.kr(
-				Env([1, 0.001, 0.001], [dur * 0.25, dur * 0.75], \exp),
-				doneAction: 2);
-			noise = LFNoise1.ar(noisefreq, noiseenv * noiseamp);
-
-			env = Osc.kr(envtab, dur.reciprocal, 0, 1);
-			fmenv = Osc.kr(fmtab, dur.reciprocal, 0, 1);
-			pitchenv = XLine.kr(1, 1.001, dur);
-
-			// Modulator section
-
-			mod1 = SinOsc.ar(modfreq1 * pitchenv * vib, 0, dev1 * fmenv);
-			mod2 = SinOsc.ar(modfreq2 * pitchenv * vib, 0, dev2 * fmenv);
-			mod3 = SinOsc.ar(modfreq3 * pitchenv * vib, 0, dev3 * fmenv);
-			modall = mod1 + mod2 + mod3 + noise;
-
-			car = SinOsc.ar((fundfreq + modall) * pitchenv * vib, 0, amp);
-
-			sig = car * env;
-
-			// Make the signal stereo and place somewhere between the channels.
-			sig1 = sig * chan1;
-			sig2 = sig * chan2;
-			Out.ar(0, [sig1, sig2]);
-		}).load(s);
+		Out.ar(0, Splay.ar(totalsig));
+}).add;
 	);
-
-s.sendBundle(0.1,
-	[\b_alloc, 0, 4096], [\b_alloc, 1, 4096],
-	[\b_gen, 0, \sine2, 3, 0.5, 1],
-	[\b_gen, 1, \sine3, 2, 0.125, 1, 0.25]);
 
 s.sync;
 
-~i1 = Synth(\fmtrumpet, [\amp, nametoamplitude["FMTrumpet"], \dur, 1000, \fundfreq, 0]);
-~i2 = Synth(\fmtrumpet, [\amp, nametoamplitude["FMTrumpet"], \dur, 1000, \fundfreq, 0]);
+~i1 = Synth(\fmtrumpet, [\amp, nametoamplitude["FMTrumpet"], \dur, 1000, \freq, 0]);
+~i2 = Synth(\fmtrumpet, [\amp, nametoamplitude["FMTrumpet"], \dur, 1000, \freq, 0]);
 
 (
 	w = Window.new(bounds:Rect(200,200,1000,1000));
 	w.view.background_(Color.white);
 	v = UserView(w, w.view.bounds.insetBy(5,5));
-	v.animate = enableAnimation;
+	v.animate = false;
 	w.acceptsMouseOver_(true);
 	topleftnote = TextField();
 	bottomleftnote = TextField();
     hor_instrument = PopUpMenu(w, Rect(0,0,0,0));
-    hor_instrument.items = ["FMTrumpet", "FMViolin"];
+    hor_instrument.items = ["FMTrumpet", "Pad"];
     hor_instrument.action = { | menu |
 	   ~i1.free;
-	   ~i1 = Synth(nametosymbol[menu.item], [\amp, nametoamplitude[menu.item], \dur, 1000, \fundfreq, 0]);
+	   ~i1 = Synth(nametosymbol[menu.item], [\amp, nametoamplitude[menu.item], \dur, 1000, \freq, 0]);
 	   if (lastclickedrow != nil)
 	   {
 		    var rownote = lastclickedrow.linlin(0,
                numrowscols-1,
 			   nametomidi.value(bottomleftnote.string),
 			   nametomidi.value(toprightnote.string));
-		    ~i1.set(\fundfreq, rownote.midicps);
+		    ~i1.set(\freq, rownote.midicps);
 			~i1.set(\amp, nametoamplitude[menu.item]);
 	   };
     };
 	toprightnote= TextField();
 	bottomrightnote = TextField();
     ver_instrument = PopUpMenu(w, Rect(0,0,0,0));
-    ver_instrument.items = ["FMTrumpet", "FMViolin"];
+    ver_instrument.items = ["FMTrumpet", "Pad"];
     ver_instrument.action = { | menu |
 	    ~i2.free;
-		~i2 = Synth(nametosymbol[menu.item], [\amp, nametoamplitude[menu.item], \dur, 1000, \fundfreq, 0]);
+		~i2 = Synth(nametosymbol[menu.item], [\amp, nametoamplitude[menu.item], \dur, 1000, \freq, 0]);
 	    if (lastclickedcol != nil)
 	    {
 		   var colnote = lastclickedcol.linlin(0,
 		       numrowscols-1,
 			   nametomidi.value(bottomrightnote.string),
 			   nametomidi.value(topleftnote.string));
-		   ~i2.set(\fundfreq, colnote.midicps);
+		   ~i2.set(\freq, colnote.midicps);
 		   ~i2.set(\amp, nametoamplitude[menu.item]);
    	    };
     };
@@ -388,17 +330,20 @@ s.sync;
 				lastclickedcol = col;
 				found = True;
 				//("row: "++row++"col: "++col).postln;
-				~i1.set(\fundfreq, rownote.midicps);
-				~i2.set(\fundfreq, colnote.midicps);
+				~i1.set(\freq, rownote.midicps);
+				~i2.set(\freq, colnote.midicps);
 			};
 		});
 		if (found == False)
 		{
-			~i1.set(\fundfreq, 0);
-			~i2.set(\fundfreq, 0);
+			~i1.set(\freq, 0);
+			~i2.set(\freq, 0);
 			lastclickedrow = nil;
 			lastclickedcol = nil;
 		};
+
+	w.refresh;
+
 	};
 
 	v.onClose = {
